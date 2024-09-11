@@ -12,9 +12,9 @@ class Tickets(commands.GroupCog, name="tickets"):
         self.status = True
 
     @app_commands.command(name="create", description="new ticket")
-    async def commands(self, interaction: discord.Interaction):
+    async def create(self, interaction: discord.Interaction):
         embed = discord.Embed(title="new ticket", description="you have created a new ticket", color=Color.teal(),)
-        await interaction.response.send_message(embed=em)
+        await interaction.response.send_message(embed=embed)
 
 async def setup(client):
     if Tickets(client).status:

@@ -1,1 +1,5 @@
 config.json
+db/mydatabas.db
+__pycache__/
+cogs/__pycache__/
+utils/__pycache__/
