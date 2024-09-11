@@ -14,7 +14,7 @@ class Help(commands.GroupCog, name="help"):
     async def commands(self, interaction: discord.Interaction):
         em = discord.Embed(
             title="**ProjectBot Help**",
-            color=discord.Color.blurple()
+            color=discord.Color.purple()
         )
         em.set_thumbnail(
             url=self.client.user.avatar.url
