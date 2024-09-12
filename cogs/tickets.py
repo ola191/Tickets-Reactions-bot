@@ -12,6 +12,8 @@ import sqlite3
 
 from typing import Optional, Literal
 
+from utils.error_handler import handle_command_exception
+
 class Tickets(commands.GroupCog, name="tickets"):
     def __init__(self, client):
         self.client = client
@@ -52,6 +54,7 @@ class Tickets(commands.GroupCog, name="tickets"):
                     missing_fields_str = ", ".join(missing_fields)
                     embed = create_error_embed(f"The following settings are missing: {missing_fields_str}. Please set them up.")
                     await interaction.response.send_message(embed=embed)
+                    return
             
             self.db_cursor.execute("INSERT INTO tickets (server_id, ticket_id, title, description, created_at, assigned_to) VALUES (?, ?, ?, ?, ?, ?)", (server_id, ticket_id, title or "No title", description or "No description", creation_date, user_id))
             self.db_connection.commit()
@@ -59,9 +62,14 @@ class Tickets(commands.GroupCog, name="tickets"):
             embed = discord.Embed(title="New Ticket Created", description=f"Your ticket has been created successfully. Ticket ID: {ticket_id}", color=Color.green(),)
             
             await interaction.response.send_message(embed=embed)
+            
         except Exception as e:
-            embed = create_error_embed(f"An error occurred while creating the ticket. {e}")
-            await interaction.response.send_message(embed=embed)
+            await handle_command_exception(
+                interaction,
+                self.client,
+                self.db_cursor,
+                "An error occurred while creating the ticket.", e
+            )
             
     @app_commands.command(name="view", description="View your tickets")
     async def view(self, interaction: discord.Interaction):
@@ -93,8 +101,12 @@ class Tickets(commands.GroupCog, name="tickets"):
 
             await interaction.response.send_message(embed=embed)
         except Exception as e:
-            embed = create_error_embed(f"An error occurred while viewing tickets. {e}")
-            await interaction.response.send_message(embed=embed)
+            await handle_command_exception(
+                interaction,
+                self.client,
+                self.db_cursor,
+                "An error occurred while viewing tickets.", e
+            )
 
     @app_commands.command(name="close", description="Close a ticket")
     async def close(self, interaction: discord.Interaction, ticket_id: int):
@@ -139,8 +151,12 @@ class Tickets(commands.GroupCog, name="tickets"):
 
             await interaction.response.send_message(embed=embed)
         except Exception as e:
-            embed = create_error_embed(f"An error occurred while closing the ticket. {e}")
-            await interaction.response.send_message(embed=embed)
+            await handle_command_exception(
+                interaction,
+                self.client,
+                self.db_cursor,
+                "An error occurred while closing the ticket.", e
+            )
             
     def _generate_ticket_id(self):
         try:
