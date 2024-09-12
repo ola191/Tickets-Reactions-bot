@@ -9,6 +9,7 @@ def create_tables(cursor):
             prefix TEXT DEFAULT '!',
             admin_role_ids JSON,
             log_channel_id INTEGER,
+            tickets_categories JSON,
             other_settings JSON,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
