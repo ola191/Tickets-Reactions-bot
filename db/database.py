@@ -23,6 +23,7 @@ def create_tables(cursor):
             ticket_id INTEGER NOT NULL UNIQUE,
             title TEXT,
             description TEXT,
+            ticket_category TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             status TEXT CHECK(status IN ('open', 'closed', 'in-progress')) DEFAULT 'open',
