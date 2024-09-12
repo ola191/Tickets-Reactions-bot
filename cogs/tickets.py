@@ -28,6 +28,31 @@ class Tickets(commands.GroupCog, name="tickets"):
             user_id = interaction.user.id
             creation_date = datetime.datetime.utcnow().isoformat()
             
+            self.db_cursor.execute('''
+                SELECT admin_role_ids, log_channel_id FROM config WHERE server_id = ?
+            ''', (server_id,))
+                                    
+            data = self.db_cursor.fetchone()
+            
+            if data is None:
+                embed = create_error_embed(f"No configuration found for this server. Please configure the bot. Use command /help config.")
+                await interaction.response.send_message(embed=embed)
+            else:
+                admin_role_ids, log_channel_id = data
+
+                missing_fields = []
+
+                if not admin_role_ids or admin_role_ids == "null" or admin_role_ids == "[]":
+                    missing_fields.append("Admin roles")
+
+                if not log_channel_id:
+                    missing_fields.append("Log channel")
+
+                if missing_fields:
+                    missing_fields_str = ", ".join(missing_fields)
+                    embed = create_error_embed(f"The following settings are missing: {missing_fields_str}. Please set them up.")
+                    await interaction.response.send_message(embed=embed)
+            
             self.db_cursor.execute("INSERT INTO tickets (server_id, ticket_id, title, description, created_at, assigned_to) VALUES (?, ?, ?, ?, ?, ?)", (server_id, ticket_id, title or "No title", description or "No description", creation_date, user_id))
             self.db_connection.commit()
             
