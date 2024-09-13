@@ -3,7 +3,7 @@ import json
 import os
 import discord
 from discord.ext import commands
-from db.database import setup_database
+from db.database import setup_database, fetch_config
 from utils.embeds import create_success_embed, create_embed
 import datetime
 import sys
@@ -48,8 +48,15 @@ async def sync_slash_commands():
 
         sys.stdout.write(f"\r[{datetime.datetime.now()}] [\033[1;36mCONSOLE\033[0;0m]: Slash commands synchronized with guilds    \n")
         sys.stdout.flush()
-        log_channel = client.get_channel(int(config["log_channel_id"]))
-        await log_channel.send(embed=create_embed(title="Info", description="Slash commands synchronized with guilds", color=Color.from_rgb(100,150,255)))
+
+        server_id = client.guilds[0].id 
+        config_data = fetch_config(server_id)
+        if config_data:
+            log_channel_id = config_data[1]
+            if log_channel_id:
+                log_channel = client.get_channel(int(log_channel_id))
+                if log_channel:
+                    await log_channel.send(embed=create_embed(title="Info", description="Slash commands synchronized with guilds", color=Color.from_rgb(100,150,255)))
     except Exception as e:
         print(f"[{datetime.datetime.now()}] [\033[91mERROR\033[0;0m]: {e}")
 
@@ -67,13 +74,20 @@ async def on_ready():
         botName = "tickets&reactions"
         print(f"[{datetime.datetime.now()}] [\033[1;32mCONSOLE\033[0;0m]: {botName} ready")
         
-        log_channel = client.get_channel(int(config["log_channel_id"]))
-        embed = create_success_embed(f"{botName} ready")
-        guild_count = len(client.guilds)
-        total_members = sum(guild.member_count for guild in client.guilds)
-        client.loop.create_task(change_bot_status(guild_count, total_members))
-        await log_channel.send(embed=embed)
-        await sync_slash_commands()
+        server_id = client.guilds[0].id 
+        config_data = fetch_config(server_id)
+        if config_data:
+            log_channel_id = config_data[1]
+            if log_channel_id:
+                log_channel = client.get_channel(int(log_channel_id))
+                if log_channel:
+                    embed = create_success_embed(f"{botName} ready")
+                    guild_count = len(client.guilds)
+                    total_members = sum(guild.member_count for guild in client.guilds)
+                    client.loop.create_task(change_bot_status(guild_count, total_members))
+                    await log_channel.send(embed=embed)
+                    await sync_slash_commands()
+                    
     except BaseException as error:
         print(f'An exception occurred: {error}')
 

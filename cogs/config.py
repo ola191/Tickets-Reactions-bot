@@ -1,37 +1,27 @@
 import asyncio
 import datetime
+from typing import Optional
 import discord
 from discord.ui import Button, View
 from discord.ext import commands
-from discord import app_commands, Color
+from discord import ButtonStyle, app_commands, Color, TextChannel, Member, Interaction
 from utils.embeds import create_error_embed
-import sqlite3
-from typing import Optional
 from utils.error_handler import handle_command_exception
-from discord import app_commands, Embed, Color, TextChannel, Member, ButtonStyle, Interaction, ui
+from db.database import fetch_admin_role_ids, fetch_config, insert_config, update_config, add_admin_role, delete_admin_role
 
 class Config(commands.GroupCog, name="config"):
     def __init__(self, client):
         self.client = client
         self.status = True
-        self.db_connection = sqlite3.connect('db/mydatabase.db')
-        self.db_cursor = self.db_connection.cursor()
 
-    async def _check_permissions(self, interaction: discord.Interaction):
+    async def _check_permissions(self, interaction: discord.Interaction) -> bool:
         server_id = interaction.guild.id
         user_id = interaction.user.id
 
         if user_id == interaction.guild.owner_id:
             return True
 
-        self.db_cursor.execute('''SELECT admin_role_ids FROM config WHERE server_id = ?''', (server_id,))
-        admin_role_ids = self.db_cursor.fetchone()
-
-        if admin_role_ids is None:
-            return False
-
-        admin_role_ids = eval(admin_role_ids[0]) if admin_role_ids[0] else []
-
+        admin_role_ids = fetch_admin_role_ids(server_id)
         for role in interaction.user.roles:
             if role.id in admin_role_ids:
                 return True
@@ -39,27 +29,23 @@ class Config(commands.GroupCog, name="config"):
         return False
 
     @app_commands.command(name="set", description="Set a configuration option for the server")
-    async def set_config(self, interaction: Interaction, log_channel: Optional[TextChannel] = None, admin_role: Optional[Member] = None):
+    async def set_config(self, interaction: Interaction, log_channel: Optional[TextChannel] = None, admin_user: Optional[Member] = None):
         try:
             server_id = interaction.guild.id
-            self.db_cursor.execute('''SELECT admin_role_ids, log_channel_id FROM config WHERE server_id = ?''', (server_id,))
+            config_data = fetch_config(server_id)
 
-            data = self.db_cursor.fetchone()
-
-            if data is None:
-                self.db_cursor.execute('''INSERT INTO config (server_id, admin_role_ids, log_channel_id) VALUES (?, ?, ?)''', 
-                                      (server_id, f'[{admin_role.id}]' if admin_role else '[]', log_channel.id if log_channel else None))
+            if config_data is None:
+                insert_config(server_id, [admin_user.id] if admin_user else [], log_channel.id if log_channel else None)
                 embed = discord.Embed(title="Configuration Set", description="Configuration options have been successfully set.", color=discord.Color.green())
                 await interaction.response.send_message(embed=embed)
                 return
 
-            admin_roles, current_log_channel_id = data
-            admin_roles = eval(admin_roles) if admin_roles else []
+            admin_roles, current_log_channel_id = config_data
 
-            if admin_role:
+            if admin_user:
                 embed = discord.Embed(
                     title="Confirm Admin Role Replacement",
-                    description=f"Are you sure you want to replace all admin roles with {admin_role.mention}?",
+                    description=f"Are you sure you want to replace all admin users with {admin_user.mention}?",
                     color=discord.Color.red()
                 )
 
@@ -93,10 +79,10 @@ class Config(commands.GroupCog, name="config"):
                     return
 
                 if view.value:
-                    admin_roles = [admin_role.id]
+                    admin_roles = [admin_user.id]
                     embed = discord.Embed(
                         title="Admin Roles Updated",
-                        description=f"All admin roles have been replaced with {admin_role.mention}.",
+                        description=f"All admin roles have been replaced with {admin_user.mention}.",
                         color=discord.Color.green()
                     )
                 else:
@@ -107,9 +93,7 @@ class Config(commands.GroupCog, name="config"):
                     )
                 await interaction.followup.send(embed=embed)
                 if view.value:
-                    self.db_cursor.execute('''UPDATE config SET admin_role_ids = ?, log_channel_id = ? WHERE server_id = ?''', 
-                                          (str(admin_roles), current_log_channel_id, server_id))
-                    self.db_connection.commit()
+                    update_config(server_id, admin_roles, current_log_channel_id)
                 return
 
             if log_channel:
@@ -139,9 +123,7 @@ class Config(commands.GroupCog, name="config"):
                     color=discord.Color.green()
                 )
 
-            self.db_cursor.execute('''UPDATE config SET admin_role_ids = ?, log_channel_id = ? WHERE server_id = ?''', 
-                                  (str(admin_roles), current_log_channel_id, server_id))
-            self.db_connection.commit()
+            update_config(server_id, admin_roles, current_log_channel_id)
 
             if not interaction.response.is_done():
                 await interaction.response.send_message(embed=embed)
@@ -149,16 +131,7 @@ class Config(commands.GroupCog, name="config"):
                 await interaction.followup.send(embed=embed)
 
         except Exception as e:
-            await handle_command_exception(interaction, self.bot, self.db_cursor, "An error occurred while setting the configuration.", e)
-            
-    async def handle_command_exception(interaction, bot, cursor, message, exception):
-        embed = discord.Embed(title="Error", description=message, color=Color.red())
-        if not interaction.response.is_done():
-            await interaction.response.send_message(embed=embed)
-        else:
-            await interaction.followup.send(embed=embed)
-        print(exception)
-
+            await handle_command_exception(interaction, self.client, "An error occurred while setting the configuration.", e)
 
     @app_commands.command(name="view", description="View the current server configuration")
     async def view_config(self, interaction: discord.Interaction):
@@ -168,10 +141,9 @@ class Config(commands.GroupCog, name="config"):
                 return
 
             server_id = interaction.guild.id
-            self.db_cursor.execute('''SELECT admin_role_ids, log_channel_id FROM config WHERE server_id = ?''', (server_id,))
-            data = self.db_cursor.fetchone()
+            config_data = fetch_config(server_id)
 
-            if data is None:
+            if config_data is None:
                 embed = discord.Embed(
                     title="No Configuration Found",
                     description="No configuration exists for this server.",
@@ -180,163 +152,80 @@ class Config(commands.GroupCog, name="config"):
                 await interaction.response.send_message(embed=embed)
                 return
 
-            admin_role_ids, log_channel_id = data
-            admin_role_ids = eval(admin_role_ids) if admin_role_ids else []
-            admin_roles_str = ", ".join([f"<@{user_id}>" for user_id in admin_role_ids]) if admin_role_ids else "None"
+            admin_users_ids, log_channel_id = config_data
+            admin_users_str = ", ".join([f"<@{user_id}>" for user_id in admin_users_ids]) if admin_users_ids else "None"
 
             embed = discord.Embed(
                 title="Server Configuration",
                 color=discord.Color.from_rgb(100, 150, 255)
             )
             embed.add_field(name="Log Channel", value=f"<#{log_channel_id}>" if log_channel_id else "Not set", inline=False)
-            embed.add_field(name="Admin Roles", value=admin_roles_str, inline=False)
+            embed.add_field(name="Admin users", value=admin_users_str, inline=False)
 
             await interaction.response.send_message(embed=embed)
 
         except Exception as e:
-            await handle_command_exception(
-                interaction,
-                self.client,
-                self.db_cursor,
-                "An error occurred while viewing the configuration.",
-                e
-            )
+            await handle_command_exception(interaction, self.client, "An error occurred while viewing the configuration.", e)
 
     @app_commands.command(name="add", description="Add an admin user")
-    async def add_config(self, interaction: discord.Interaction, admin_user: Optional[discord.Member] = None):
+    async def add_admin_role(self, interaction: Interaction, admin_user: Optional[Member]):
         try:
             if not await self._check_permissions(interaction):
-                await interaction.response.send_message(embed=create_error_embed("You don't have permissions to use this command."))
+                await interaction.response.send_message(embed=create_error_embed("You don't have permissions to add admin roles."))
                 return
 
             server_id = interaction.guild.id
-            self.db_cursor.execute('''SELECT admin_role_ids FROM config WHERE server_id = ?''', (server_id,))
+            admin_roles = fetch_admin_role_ids(server_id)
 
-            data = self.db_cursor.fetchone()
-
-            if data is None:
-                self.db_cursor.execute('''INSERT INTO config (server_id, admin_role_ids, log_channel_id) VALUES (?, ?, ?)''', (server_id, f'[{admin_user.id}]', None))
-                embed = discord.Embed(
+            if admin_user.id not in admin_roles:
+                admin_roles.append(admin_user.id)
+                update_config(server_id, admin_roles, None)
+                await interaction.response.send_message(embed=discord.Embed(
                     title="Admin User Added",
-                    description=f"Admin user {admin_user.mention} has been successfully added.",
-                    color=Color.green()
-                )
+                    description=f"User {admin_user.mention} has been added to the list of admins.",
+                    color=discord.Color.green()
+                ))
             else:
-                admin_users = eval(data[0]) if data[0] else []
-
-                if admin_user:
-                    if admin_user.id in admin_users:
-                        embed = discord.Embed(
-                            title="User Already Admin",
-                            description=f"{admin_user.mention} is already an admin.",
-                            color=Color.red()
-                        )
-                    else:
-                        admin_users.append(admin_user.id)
-                        self.db_cursor.execute('''UPDATE config SET admin_role_ids = ? WHERE server_id = ?''', (str(admin_users), server_id))
-                        self.db_connection.commit()
-                        
-                        embed = discord.Embed(
-                            title="Admin User Added",
-                            description=f"Admin user {admin_user.mention} has been successfully added.",
-                            color=Color.green()
-                        )
-                else:
-                    embed = discord.Embed(
-                        title="No User Provided",
-                        description="No user was provided to add.",
-                        color=Color.red()
-                    )
-
-            await interaction.response.send_message(embed=embed)
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="User Is Already Admin",
+                    description=f"User {admin_user.mention} is already an admin.",
+                    color=discord.Color.red()
+                ))
 
         except Exception as e:
-            await handle_command_exception(
-                interaction,
-                self.client,
-                self.db_cursor,
-                "An error occurred while adding the admin user.",
-                e
-            )
+            await handle_command_exception(interaction, self.client, "An error occurred while adding the admin user.", e)
 
-    @app_commands.command(name="del", description="Delete an admin user")
-    async def del_config(self, interaction: discord.Interaction, admin_user: Optional[discord.Member] = None):
+    @app_commands.command(name="remove", description="Remove an admin role")
+    async def remove_admin_role(self, interaction: Interaction, admin_user: discord.Member):
         try:
             if not await self._check_permissions(interaction):
-                await interaction.response.send_message(embed=create_error_embed("You don't have permissions to use this command."))
+                await interaction.response.send_message(embed=create_error_embed("You don't have permissions to remove admin roles."))
                 return
 
             server_id = interaction.guild.id
-            self.db_cursor.execute('''SELECT admin_role_ids FROM config WHERE server_id = ?''', (server_id,))
+            admin_roles = fetch_admin_role_ids(server_id)
 
-            data = self.db_cursor.fetchone()
-
-            if data is None:
-                embed = discord.Embed(
-                    title="No Configuration Found",
-                    description="No configuration exists for this server.",
-                    color=Color.red()
-                )
-                await interaction.response.send_message(embed=embed)
-                return
-
-            admin_users = eval(data[0]) if data[0] else []
-
-            if admin_user:
-                if admin_user.id in admin_users:
-                    admin_users.remove(admin_user.id)
-                    self.db_cursor.execute('''UPDATE config SET admin_role_ids = ? WHERE server_id = ?''', (str(admin_users), server_id))
-                    self.db_connection.commit()
-                    
-                    embed = discord.Embed(
-                        title="Admin User Deleted",
-                        description=f"Admin user {admin_user.mention} has been successfully removed.",
-                        color=Color.green()
-                    )
-                else:
-                    embed = discord.Embed(
-                        title="User Not an Admin",
-                        description=f"{admin_user.mention} is not an admin.",
-                        color=Color.red()
-                    )
-                await interaction.response.send_message(embed=embed)
+            if admin_user.id in admin_roles:
+                admin_roles.remove(admin_user.id)
+                update_config(server_id, admin_roles, None)
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="Admin Role Removed",
+                    description=f"Role {admin_user.mention} has been removed from the list of admin roles.",
+                    color=discord.Color.green()
+                ))
+            else:
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="Role Not Admin",
+                    description=f"Role {admin_user.mention} is not an admin role.",
+                    color=discord.Color.red()
+                ))
 
         except Exception as e:
-            await handle_command_exception(
-                interaction,
-                self.client,
-                self.db_cursor,
-                "An error occurred while deleting the admin user.",
-                e
-            )
-
-    @app_commands.command(name="clear", description="Clear all admin users and log channel")
-    async def clear_config(self, interaction: discord.Interaction):
-        try:
-            if not await self._check_permissions(interaction):
-                await interaction.response.send_message(embed=create_error_embed("You don't have permissions to use this command."))
-                return
-
-            server_id = interaction.guild.id
-            self.db_cursor.execute('''UPDATE config SET admin_role_ids = ?, log_channel_id = ? WHERE server_id = ?''', ('[]', None, server_id))
-
-            self.db_connection.commit()
-
-            embed = discord.Embed(title="Configuration Cleared", description="All admin users and the log channel have been cleared.", color=Color.green())
-            await interaction.response.send_message(embed=embed)
-
-        except Exception as e:
-            await handle_command_exception(
-                interaction,
-                self.client,
-                self.db_cursor,
-                "An error occurred while clearing the configuration.",
-                e
-            )
+            await handle_command_exception(interaction, self.client, "An error occurred while removing the admin role.", e)
 
 async def setup(client):
     if Config(client).status:
         print(f"[{datetime.datetime.now()}] [\033[1;33mCONSOLE\033[0;0m]: Cog [\033[1;33m{Config.__name__}\033[0;0m] loaded : Status [\033[1;32mEnable\033[0;0m]")
         await client.add_cog(Config(client))
-    else:  
+    else:
         print(f"[{datetime.datetime.now()}] [\033[1;33mCONSOLE\033[0;0m]: Cog [\033[1;33m{Config.__name__}\033[0;0m] loaded : Status [\033[1;31mUnable\033[0;0m]")
