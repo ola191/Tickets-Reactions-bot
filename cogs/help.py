@@ -85,10 +85,12 @@ class Help(commands.GroupCog, name="help"):
                     "Welcome to the bot setup! Before you start using the bot, there are two important steps to configure:\n\n"
                     "1. **Log Channel**: This is the channel where the bot will post system messages such as bot startup, "
                     "command synchronization with guilds, and any errors or issues that occur.\n"
-                    "   To set this, use `/config set log_channel_id <channel_id>`.\n\n"
-                    "2. **Admin Roles**: You need to assign roles to users who will have permission to use admin-related commands for the bot.\n"
-                    "   Set this using `/config set admin_role_ids <role_id>`.\n"
-                    "   Add them using `/config add admin_role_ids <role_id>`.\n\n"
+                    "   Set this using `/config set log_channel_id <channel_id>`.\n\n"
+                    "2. **Admin Users**: You need to assign users who will have permission to use admin-related commands for the bot.\n"
+                    "   Set this using `/config set admin_user <member>`.\n"
+                    "   Add them using `/config add admin_user <member>`.\n\n"
+                    "2. **Ticket Categories**: You need to set ticket categories to create tickets in them.\n"
+                    "   Add them using `/config add ticket_category <name>`.\n\n"
                     "Once these are configured, the bot will be able to log important messages and properly restrict admin commands."
                 ),
                 color=discord.Color.from_rgb(100,150,255)
