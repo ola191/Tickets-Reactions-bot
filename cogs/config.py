@@ -7,7 +7,7 @@ from discord.ext import commands
 from discord import ButtonStyle, app_commands, Color, TextChannel, Member, Interaction
 from utils.embeds import create_error_embed
 from utils.error_handler import handle_command_exception
-from db.database import add_ticket_category, fetch_admin_role_ids, fetch_config, insert_config, update_config, add_admin_role, delete_admin_role
+from db.database import add_ticket_category, fetch_admin_role_ids, fetch_config, fetch_ticket_categories, insert_config, update_config, add_admin_role, delete_admin_role
 
 class Config(commands.GroupCog, name="config"):
     def __init__(self, client):
@@ -174,14 +174,14 @@ class Config(commands.GroupCog, name="config"):
             print(config_data)
             await handle_command_exception(interaction, self.client, "An error occurred while viewing the configuration.", e)
 
-    @app_commands.command(name="add", description="Add an admin user")
-    async def add_admin_role(self, interaction: Interaction, admin_user: Optional[Member], ticket_category : Optional[str]):
+    @app_commands.command(name="add", description="Add admin and ticket category")
+    async def add(self, interaction: Interaction, admin_user: Optional[Member], ticket_category: Optional[str]):
         try:
             if not await self._check_permissions(interaction):
                 not_access_embed = create_error_embed("You don't have permissions to add admin roles.")
                 await interaction.response.send_message(embed=not_access_embed)
                 return
-            
+
             server_id = interaction.guild.id
             
             if admin_user:
@@ -202,22 +202,41 @@ class Config(commands.GroupCog, name="config"):
                         color=discord.Color.red()
                     ))
                 return
+
             if ticket_category:
-                add_ticket_category(server_id, ticket_category)
-                await interaction.response.send_message(embed=discord.Embed(
+                existing_categories = fetch_ticket_categories(server_id)
+
+                discord_category = discord.utils.get(interaction.guild.categories, name=ticket_category)
+
+                if discord_category and discord_category.id not in existing_categories:
+                    add_ticket_category(server_id, discord_category.id)
+                    await interaction.response.send_message(embed=discord.Embed(
                         title="Ticket Category Added",
-                        description=f"Category **{ticket_category}** has been added to the list of categories.",
+                        description=f"Category **{discord_category.name}** has been added to the database.",
                         color=discord.Color.green()
                     ))
+                elif not discord_category:
+                    new_category = await interaction.guild.create_category(ticket_category)
+                    add_ticket_category(server_id, new_category.id)
+                    await interaction.response.send_message(embed=discord.Embed(
+                        title="Ticket Category Created and Added",
+                        description=f"Category **{new_category.name}** has been created and added to the list of categories.",
+                        color=discord.Color.green()
+                    ))
+                else:
+                    await interaction.response.send_message(embed=discord.Embed(
+                        title="Category Already Exists",
+                        description=f"Category **{discord_category.name}** already exists in the database.",
+                        color=discord.Color.red()
+                    ))
                 return
+
             await interaction.response.send_message(embed=create_error_embed("Please provide a valid user or category to add."))
-            return
-
         except Exception as e:
-            await handle_command_exception(interaction, self.client, "An error occurred while adding the admin user.", e)
-
+            await handle_command_exception(interaction, self.client, "An error occurred while adding the admin user or category.", e)
+        
     @app_commands.command(name="remove", description="Remove an admin role")
-    async def remove_admin_role(self, interaction: Interaction, admin_user: discord.Member):
+    async def remove_admin_role(self, interaction: Interaction, admin_user: discord.Member, ticket_category: Optional[str]):
         try:
             if not await self._check_permissions(interaction):
                 await interaction.response.send_message(embed=create_error_embed("You don't have permissions to remove admin roles."))

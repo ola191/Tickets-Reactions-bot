@@ -132,7 +132,7 @@ def update_config(server_id: int, admin_role_ids: List[int], log_channel_id: Opt
         admin_role_ids_json = json.dumps(admin_role_ids)
         cursor.execute('''UPDATE config SET admin_role_ids = ? WHERE server_id = ?''',
                     (admin_role_ids_json, server_id))
-            
+
         if ticket_categories is not None:
             ticket_categories_json = json.dumps(ticket_categories)
             cursor.execute('''UPDATE config SET tickets_categories = ? WHERE server_id = ?''',
@@ -181,7 +181,6 @@ def fetch_ticket_categories(server_id: int) -> Optional[List[str]]:
 
 def add_ticket_category(server_id: int, category_name: str):
     try:
-        print("tttt")
         connection = get_db_connection()
         cursor = connection.cursor()
         categories = fetch_ticket_categories(server_id)
