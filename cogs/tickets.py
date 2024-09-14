@@ -1,5 +1,6 @@
 import datetime
-from typing import Optional
+import json
+from typing import Optional, List
 
 import discord
 from discord.ext import commands
@@ -8,51 +9,109 @@ from discord import app_commands, Color
 from utils.embeds import create_error_embed
 from utils.error_handler import handle_command_exception
 
-from db.database import execute_select, execute_query, generate_ticket_id
+from db.database import execute_select, execute_query, fetch_admin_role_ids, fetch_config, generate_ticket_id
 
 class Tickets(commands.GroupCog, name="tickets"):
     def __init__(self, client):
         self.client = client
         self.status = True
 
-    @app_commands.command(name="create", description="Create a new ticket")
-    async def create(self, interaction: discord.Interaction, title: Optional[str] = None, description: Optional[str] = None):
+    async def autocomplete_category(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         try:
             server_id = interaction.guild.id
-            ticket_id = generate_ticket_id()
+            query = "SELECT tickets_categories FROM config WHERE server_id = ?"
+            data = execute_select(query, (server_id,))
+
+            if data and data[0]:
+                category_ids = json.loads(data[0][0])
+
+                guild = interaction.guild
+                categories = [
+                    (category.id, category.name)
+                    for category in guild.categories
+                    if category.id in category_ids and str(category.id).startswith(current)
+                ]
+
+                return [
+                    app_commands.Choice(name=name, value=str(id))
+                    for id, name in categories[:25]
+                ]
+                
+        except Exception as e:
+            print(f"Error in autocomplete_category: {e}")
+            return []
+
+    async def create_ticket_channel(self, guild: discord.Guild, category_id: int, channel_name: str) -> discord.TextChannel:
+        category = discord.utils.get(guild.categories, id=category_id)
+        if not category:
+            raise ValueError("Category not found")
+
+        channel = await guild.create_text_channel(name=channel_name, category=category)
+
+        permissions = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        
+        admin_role_ids = fetch_admin_role_ids(guild.id)
+        
+        for admin_role_id in admin_role_ids:
+            role = guild.get_role(admin_role_id)
+            if role:
+                permissions[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        
+        await channel.edit(overwrites=permissions)
+
+        return channel
+
+    @app_commands.command(name="create", description="Create a new ticket")
+    @app_commands.describe(title="Title of the ticket", description="Description of the ticket", category="Category of the ticket")
+    @app_commands.autocomplete(category=autocomplete_category)
+    async def create(self, interaction: discord.Interaction, title: str, description: str, category: str):
+        try:
+            server_id = interaction.guild.id
             user_id = interaction.user.id
             creation_date = datetime.datetime.utcnow().isoformat()
 
-            query = "SELECT admin_role_ids, log_channel_id, tickets_categories FROM config WHERE server_id = ?"
-            data = execute_select(query, (server_id,))
-
+            data = fetch_config(server_id)
             if not data:
                 embed = create_error_embed(f"No configuration found for this server. Please configure the bot. Use command /help config.")
                 await interaction.response.send_message(embed=embed)
                 return
 
-            admin_role_ids, log_channel_id, tickets_categories = data[0]
+            admin_role_ids, log_channel_id, tickets_categories = data
 
-            missing_fields = []
-            if not admin_role_ids or admin_role_ids == "null" or admin_role_ids == "[]":
-                missing_fields.append("Admin roles")
-            if not log_channel_id:
-                missing_fields.append("Log channel")
-            if not tickets_categories or tickets_categories == "null" or tickets_categories == "[]":
-                missing_fields.append("Ticket categories")
-
-            if missing_fields:
-                embed = create_error_embed(f"The following settings are missing: {', '.join(missing_fields)}. Please set them up.")
+            if int(category) not in tickets_categories:
+                embed = create_error_embed(f"The category '{category}' does not exist. Please select a valid category.")
                 await interaction.response.send_message(embed=embed)
                 return
 
-            insert_query = """
-                INSERT INTO tickets (server_id, ticket_id, title, description, created_at, assigned_to)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """
-            execute_query(insert_query, (server_id, ticket_id, title or "No title", description or "No description", creation_date, user_id))
+            ticket_id = generate_ticket_id()
+            category_name = discord.utils.get(interaction.guild.categories, id=int(category)).name
+            channel_name = f"ticket-{ticket_id}"
 
-            embed = discord.Embed(title="New Ticket Created", description=f"Your ticket has been created successfully. Ticket ID: {ticket_id}", color=Color.green())
+            channel = await self.create_ticket_channel(interaction.guild, int(category), channel_name)
+
+            insert_query = """
+                INSERT INTO tickets (server_id, ticket_id, title, description, category, created_at, owner)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """
+            execute_query(insert_query, (server_id, ticket_id, title, description, int(category), creation_date, user_id))
+
+            insert_permission_query = """
+                INSERT INTO ticket_permissions (ticket_id, user_id, role)
+                VALUES (?, ?, 'user')
+            """
+            execute_query(insert_permission_query, (ticket_id, user_id))
+
+            for admin_role_id in admin_role_ids:
+                execute_query(insert_permission_query, (ticket_id, admin_role_id))
+
+            embed = discord.Embed(
+                title="New Ticket Created",
+                description=f"Your ticket has been created successfully in category **{category_name}**. Ticket ID: {ticket_id}. Channel: {channel.mention}",
+                color=discord.Color.green()
+            )
             await interaction.response.send_message(embed=embed)
 
         except Exception as e:
