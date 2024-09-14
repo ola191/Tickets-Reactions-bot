@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import datetime
 
@@ -16,16 +17,23 @@ def get_log_channel_id(server_id):
         print(f"Error fetching log channel ID: {e}")
         return None
     
-def fetch_config(server_id: int) -> Optional[Tuple[List[int], Optional[int]]]:
+    # -> Optional[Tuple[List[int], Optional[int], List[str]]]
+def fetch_config(server_id: int):
+    print("fetch coonfig")
     try:
         connection = get_db_connection()
         cursor = connection.cursor()
-        cursor.execute('''SELECT admin_role_ids, log_channel_id FROM config WHERE server_id = ?''', (server_id,))
+        cursor.execute('''SELECT admin_role_ids, log_channel_id, COALESCE(tickets_categories, '[]') FROM config WHERE server_id = ?''', (server_id,))
         result = cursor.fetchone()
         connection.close()
+        
+        print(f"Fetched result: {result}") 
+
         if result:
-            admin_role_ids = eval(result[0]) if result[0] else []
-            return (admin_role_ids, result[1])
+            admin_role_ids = json.loads(result[0]) if result[0] else []
+            log_channel_id = result[1]
+            categories_names = json.loads(result[2]) if result[2] else []
+            return (admin_role_ids, log_channel_id, categories_names)
         return None
     except Exception as e:
         print(f"Error fetching config: {e}")
@@ -101,22 +109,7 @@ def fetch_admin_role_ids(server_id: int) -> Optional[List[int]]:
         print(f"Error fetching admin role IDs: {e}")
         return None
     
-def fetch_config(server_id: int) -> Optional[Tuple[List[int], Optional[int]]]:
-    try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute('''SELECT admin_role_ids, log_channel_id FROM config WHERE server_id = ?''', (server_id,))
-        result = cursor.fetchone()
-        connection.close()
-        if result:
-            admin_role_ids = eval(result[0]) if result[0] else []
-            return (admin_role_ids, result[1])
-        return None
-    except Exception as e:
-        print(f"Error fetching config: {e}")
-        return None
-    
-def insert_config(server_id: int, admin_role_ids: List[int], log_channel_id: Optional[int]):
+def insert_config(server_id: int, admin_role_ids: list, log_channel_id: Optional[int]):
     try:
         connection = get_db_connection()
         cursor = connection.cursor()
@@ -127,7 +120,7 @@ def insert_config(server_id: int, admin_role_ids: List[int], log_channel_id: Opt
     except Exception as e:
         print(f"Error inserting config: {e}")
         
-def update_config(server_id: int, admin_role_ids: List[int], log_channel_id: Optional[int]):
+def update_config(server_id: int, admin_role_ids: List[int], log_channel_id: Optional[int], ticket_categories: Optional[List[str]]):
     try:
         connection = get_db_connection()
         cursor = connection.cursor()
@@ -135,11 +128,16 @@ def update_config(server_id: int, admin_role_ids: List[int], log_channel_id: Opt
         if log_channel_id is not None:
             cursor.execute('''UPDATE config SET log_channel_id = ? WHERE server_id = ?''',
                         (log_channel_id, server_id))
-
-        if admin_role_ids is not None:
-            cursor.execute('''UPDATE config SET admin_role_ids = ? WHERE server_id = ?''',
-                        (str(admin_role_ids), server_id))
         
+        admin_role_ids_json = json.dumps(admin_role_ids)
+        cursor.execute('''UPDATE config SET admin_role_ids = ? WHERE server_id = ?''',
+                    (admin_role_ids_json, server_id))
+            
+        if ticket_categories is not None:
+            ticket_categories_json = json.dumps(ticket_categories)
+            cursor.execute('''UPDATE config SET tickets_categories = ? WHERE server_id = ?''',
+                        (ticket_categories_json, server_id))
+            
         connection.commit()
         connection.close()
     except Exception as e:
@@ -152,7 +150,7 @@ def add_admin_role(server_id: int, admin_user_id: int):
         admin_roles = fetch_admin_role_ids(server_id)
         if admin_user_id not in admin_roles:
             admin_roles.append(admin_user_id)
-            update_config(server_id, admin_roles, None)
+            update_config(server_id, admin_roles, None, None)
         connection.close()
     except Exception as e:
         print(f"Error adding admin role: {e}")
@@ -164,10 +162,36 @@ def delete_admin_role(server_id: int, admin_user_id: int):
         admin_roles = fetch_admin_role_ids(server_id)
         if admin_user_id in admin_roles:
             admin_roles.remove(admin_user_id)
-            update_config(server_id, admin_roles, None)
+            update_config(server_id, admin_roles, None, None)
         connection.close()
     except Exception as e:
         print(f"Error deleting admin role: {e}")
+        
+def fetch_ticket_categories(server_id: int) -> Optional[List[str]]:
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        cursor.execute('''SELECT tickets_categories FROM config WHERE server_id = ?''', (server_id,))
+        result = cursor.fetchone()
+        connection.close()
+        return eval(result[0]) if result and result[0] else []
+    except Exception as e:
+        print(f"Error fetching ticket categories: {e}")
+        return None
+
+def add_ticket_category(server_id: int, category_name: str):
+    try:
+        print("tttt")
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        categories = fetch_ticket_categories(server_id)
+        admin_roles = fetch_admin_role_ids(server_id)
+        if category_name not in categories:
+            categories.append(category_name)
+            update_config(server_id, admin_roles, None, categories)
+        connection.close()
+    except Exception as e:
+        print(f"Error adding ticket category: {e}")
         
 def create_tables(cursor):
     cursor.execute('''
@@ -177,6 +201,7 @@ def create_tables(cursor):
             prefix TEXT DEFAULT '!',
             admin_role_ids JSON,
             log_channel_id INTEGER,
+            tickets_categories JSON,
             other_settings JSON,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -190,6 +215,7 @@ def create_tables(cursor):
             ticket_id INTEGER NOT NULL UNIQUE,
             title TEXT,
             description TEXT,
+            category TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             status TEXT CHECK(status IN ('open', 'closed', 'in-progress')) DEFAULT 'open',

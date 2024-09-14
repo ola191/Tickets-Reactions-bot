@@ -23,7 +23,7 @@ class Tickets(commands.GroupCog, name="tickets"):
             user_id = interaction.user.id
             creation_date = datetime.datetime.utcnow().isoformat()
 
-            query = "SELECT admin_role_ids, log_channel_id FROM config WHERE server_id = ?"
+            query = "SELECT admin_role_ids, log_channel_id, tickets_categories FROM config WHERE server_id = ?"
             data = execute_select(query, (server_id,))
 
             if not data:
@@ -31,13 +31,15 @@ class Tickets(commands.GroupCog, name="tickets"):
                 await interaction.response.send_message(embed=embed)
                 return
 
-            admin_role_ids, log_channel_id = data[0]
+            admin_role_ids, log_channel_id, tickets_categories = data[0]
 
             missing_fields = []
             if not admin_role_ids or admin_role_ids == "null" or admin_role_ids == "[]":
                 missing_fields.append("Admin roles")
             if not log_channel_id:
                 missing_fields.append("Log channel")
+            if not tickets_categories or tickets_categories == "null" or tickets_categories == "[]":
+                missing_fields.append("Ticket categories")
 
             if missing_fields:
                 embed = create_error_embed(f"The following settings are missing: {', '.join(missing_fields)}. Please set them up.")
@@ -87,6 +89,14 @@ class Tickets(commands.GroupCog, name="tickets"):
             server_id = interaction.guild.id
             user_id = interaction.user.id
 
+            query = "SELECT admin_role_ids, log_channel_id, tickets_categories FROM config WHERE server_id = ?"
+            data = execute_select(query, (server_id,))
+
+            if not data:
+                embed = create_error_embed(f"No configuration found for this server. Please configure the bot. Use command /help config.")
+                await interaction.response.send_message(embed=embed)
+                return
+            
             query = "SELECT assigned_to FROM tickets WHERE server_id = ? AND ticket_id = ?"
             assigned_to = execute_select(query, (server_id, ticket_id))
 

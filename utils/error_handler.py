@@ -1,12 +1,15 @@
 import discord
 from utils.embeds import create_error_embed
-from db.database import get_log_channel_id
+from db.database import get_db_connection, get_log_channel_id
 
-async def handle_command_exception(interaction: discord.Interaction, client: discord.Client, db_cursor, error_message: str, exception: Exception):
+async def handle_command_exception(interaction: discord.Interaction, client: discord.Client, error_message: str, exception: Exception):
     log_channel_id = None
     response = ""
-    
     try:
+
+        connection = get_db_connection()
+        db_cursor = connection.cursor()
+
         server_id = interaction.guild.id
         log_channel_id = get_log_channel_id(server_id) 
         response = log_channel_id
