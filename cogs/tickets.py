@@ -41,37 +41,40 @@ class Tickets(commands.GroupCog, name="tickets"):
             print(f"Error in autocomplete_category: {e}")
             return []
 
-    async def create_ticket_channel(self, guild: discord.Guild, category_id: int, channel_name: str) -> discord.TextChannel:
-        category = discord.utils.get(guild.categories, id=category_id)
-        if not category:
-            raise ValueError("Category not found")
+    async def create_ticket_channel(self, guild: discord.Guild, category_id: int, channel_name: str, user_id: int) -> discord.TextChannel:
+        try:
+            category = discord.utils.get(guild.categories, id=category_id)
+            if not category:
+                raise ValueError("Category not found")
 
-        channel = await guild.create_text_channel(name=channel_name, category=category)
+            channel = await guild.create_text_channel(name=channel_name, category=category)
 
-        permissions = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
-        
-        admin_role_ids = fetch_admin_role_ids(guild.id)
-        
-        for admin_role_id in admin_role_ids:
-            role = guild.get_role(admin_role_id)
-            if role:
-                permissions[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        
-        await channel.edit(overwrites=permissions)
+            permissions = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            }
 
-        return channel
+            admin_role_ids = fetch_admin_role_ids(guild.id)
+
+            for admin_role_id in admin_role_ids:
+                member = guild.get_member(admin_role_id)
+                if member:
+                    permissions[member] = discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
+
+            member = guild.get_member(user_id)
+            permissions[member] = discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
+
+            await channel.edit(overwrites=permissions)
+
+            return channel
+        except Exception as e:
+            print(f"Error in create_ticket_channel: {e}")
 
     @app_commands.command(name="create", description="Create a new ticket")
     @app_commands.describe(title="Title of the ticket", description="Description of the ticket", category="Category of the ticket")
     @app_commands.autocomplete(category=autocomplete_category)
     async def create(self, interaction: discord.Interaction, title: str, description: str, category: str):
         try:
-
-
-
             server_id = interaction.guild.id
             user_id = interaction.user.id
             creation_date = datetime.datetime.utcnow().isoformat()
@@ -112,7 +115,7 @@ class Tickets(commands.GroupCog, name="tickets"):
             channel_name = f"ticket-{ticket_id}"
             # channel_id = interaction.channel.id
 
-            channel = await self.create_ticket_channel(interaction.guild, int(category), channel_name)
+            channel = await self.create_ticket_channel(interaction.guild, int(category), channel_name, user_id)
             channel_id = channel.id
             insert_query = """
                 INSERT INTO tickets (server_id, channel_id, ticket_id, title, description, category, created_at, owner)
@@ -185,7 +188,14 @@ class Tickets(commands.GroupCog, name="tickets"):
                 embed = create_error_embed(f"No configuration found for this server. Please configure the bot. Use command /help config.")
                 await interaction.response.send_message(embed=embed)
                 return
-            
+
+            admin_role_ids = json.loads(data[0][0])
+
+            is_admin = False
+            for admin_role_id in admin_role_ids:
+                if user_id == admin_role_id:
+                    is_admin = True
+
             query = "SELECT owner, channel_id, status FROM tickets WHERE server_id = ? AND ticket_id = ?"
             result = execute_select(query, (server_id, ticket_id))
 
@@ -198,7 +208,7 @@ class Tickets(commands.GroupCog, name="tickets"):
             channel_id = result[0][1]
             status = result[0][2]
 
-            if owner_id != user_id:
+            if owner_id != user_id and not is_admin:
                 embed = discord.Embed(title="Failure", description="You are not assigned to this ticket.", color=Color.red())
                 await interaction.response.send_message(embed=embed)
                 return
@@ -209,7 +219,7 @@ class Tickets(commands.GroupCog, name="tickets"):
                 return
 
             update_query = "UPDATE tickets SET status = 'closed' WHERE server_id = ? AND ticket_id = ? and owner = ?"
-            rowcount = execute_query(update_query, (server_id, ticket_id, user_id))
+            rowcount = execute_query(update_query, (server_id, ticket_id, owner_id))
 
             if rowcount > 0:
                 channel = interaction.guild.get_channel(int(channel_id))
