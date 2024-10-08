@@ -214,6 +214,7 @@ def create_tables(cursor):
             title TEXT,
             description TEXT,
             category TEXT,
+            channel_id INTEGER NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             status TEXT CHECK(status IN ('open', 'closed', 'in-progress')) DEFAULT 'open',
