@@ -119,7 +119,7 @@ def insert_config(server_id: int, admin_role_ids: list, log_channel_id: Optional
     except Exception as e:
         print(f"Error inserting config: {e}")
         
-def update_config(server_id: int, admin_role_ids: List[int] = None, log_channel_id: Optional[int] = None, ticket_categories: Optional[List[str]] = None):
+def update_config(server_id: int, admin_role_ids: List[int] = None, log_channel_id: Optional[int] = None, ticket_categories: Optional[List[str]] = None, max_tickets_per_user: Optional[int] = None):
     try:
         connection = get_db_connection()
         cursor = connection.cursor()
@@ -136,6 +136,10 @@ def update_config(server_id: int, admin_role_ids: List[int] = None, log_channel_
             ticket_categories_json = json.dumps(ticket_categories)
             cursor.execute('''UPDATE config SET tickets_categories = ? WHERE server_id = ?''',
                         (ticket_categories_json, server_id))
+
+        if max_tickets_per_user is not None:
+            cursor.execute('''UPDATE config SET max_tickets_per_user = ? WHERE server_id = ?''',
+                        (max_tickets_per_user, server_id))
             
         connection.commit()
         connection.close()
@@ -199,6 +203,7 @@ def create_tables(cursor):
             prefix TEXT DEFAULT '!',
             admin_role_ids JSON,
             log_channel_id INTEGER,
+            max_tickets_per_user INTEGER,
             tickets_categories JSON,
             other_settings JSON,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,

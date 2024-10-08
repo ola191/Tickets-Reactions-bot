@@ -29,25 +29,28 @@ class Config(commands.GroupCog, name="config"):
         return False
 
     @app_commands.command(name="set", description="Set a configuration option for the server")
-    async def set_config(self, interaction: Interaction, log_channel: Optional[TextChannel] = None, admin_user: Optional[Member] = None):
+    async def set_config(self, interaction: Interaction, log_channel: Optional[TextChannel] = None, admin_user: Optional[Member] = None, max_tickets_per_user: app_commands.Range[int, 1, 5] = None):
         try:
             try:
                 server_id = interaction.guild.id
                 config_data = fetch_config(server_id)
 
+                embed = discord.Embed(title="Configuration Update", color=discord.Color.green())
+                changes_made = False
+
                 if config_data is None:
                     insert_config(server_id, [admin_user.id] if admin_user else [], log_channel.id if log_channel else None)
-                    embed = discord.Embed(title="Configuration Set", description="Configuration options have been successfully set.", color=discord.Color.green())
+                    embed.add_field(name="Configuration Set", value="Configuration options have been successfully set.", inline=False)
                     await interaction.response.send_message(embed=embed)
                     return
 
                 admin_roles, current_log_channel_id, ticket_categories = config_data
 
                 if admin_user:
-                    embed = discord.Embed(
-                        title="Confirm Admin Role Replacement",
-                        description=f"Are you sure you want to replace all admin users with {admin_user.mention}?",
-                        color=discord.Color.red()
+                    embed.add_field(
+                        name="Confirm Admin Role Replacement",
+                        value=f"Are you sure you want to replace all admin users with {admin_user.mention}?",
+                        inline=False
                     )
 
                     class ConfirmView(View):
@@ -67,7 +70,7 @@ class Config(commands.GroupCog, name="config"):
 
                     view = ConfirmView()
                     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-                    
+
                     await view.wait()
 
                     if view.value is None:
@@ -81,11 +84,10 @@ class Config(commands.GroupCog, name="config"):
 
                     if view.value:
                         admin_roles = [admin_user.id]
-                        embed = discord.Embed(
-                            title="Admin Roles Updated",
-                            description=f"All admin roles have been replaced with {admin_user.mention}.",
-                            color=discord.Color.green()
-                        )
+                        embed.add_field(name="Admin Roles Updated",
+                                        value=f"All admin roles have been replaced with {admin_user.mention}.",
+                                        inline=False)
+                        changes_made = True
                     else:
                         embed = discord.Embed(
                             title="Operation Cancelled",
@@ -97,39 +99,43 @@ class Config(commands.GroupCog, name="config"):
                         update_config(server_id, admin_roles, current_log_channel_id, None)
                     return
 
+                if max_tickets_per_user is not None:
+                    update_config(server_id, max_tickets_per_user=max_tickets_per_user)
+                    embed.add_field(name="Max Tickets Per User Updated",
+                                    value=f"Max tickets per user has been set to {max_tickets_per_user}.", inline=False)
+                    changes_made = True
+
                 if log_channel:
                     if current_log_channel_id == log_channel.id:
-                        embed = discord.Embed(
-                            title="Log Channel Already Set",
-                            description=f"Log channel is already set to <#{current_log_channel_id}>.",
-                            color=discord.Color.from_rgb(255, 255, 100)
+                        embed.add_field(
+                            name="Log Channel Already Set",
+                            value=f"Log channel is already set to <#{current_log_channel_id}>.",
+                            inline=False
                         )
                     elif current_log_channel_id:
-                        embed = discord.Embed(
-                            title="Log Channel Updated",
-                            description=f"Log channel is already set to <#{current_log_channel_id}>. Updated to <#{log_channel.id}>.",
-                            color=discord.Color.green()
+                        embed.add_field(
+                            name="Log Channel Updated",
+                            value=f"Log channel updated from <#{current_log_channel_id}> to <#{log_channel.id}>.",
+                            inline=False
                         )
                     else:
-                        embed = discord.Embed(
-                            title="Log Channel Set",
-                            description=f"Log channel has been set to <#{log_channel.id}>.",
-                            color=discord.Color.green()
+                        embed.add_field(
+                            name="Log Channel Set",
+                            value=f"Log channel has been set to <#{log_channel.id}>.",
+                            inline=False
                         )
                     current_log_channel_id = log_channel.id
+                    changes_made = True
+                if changes_made:
+                    update_config(server_id, admin_roles, current_log_channel_id, None)
+
+                    if not interaction.response.is_done():
+                        await interaction.response.send_message(embed=embed)
+                    else:
+                        await interaction.followup.send(embed=embed)
                 else:
-                    embed = discord.Embed(
-                        title="Configuration Updated",
-                        description="Configuration options have been successfully updated.",
-                        color=discord.Color.green()
-                    )
-
-                update_config(server_id, admin_roles, current_log_channel_id, None)
-
-                if not interaction.response.is_done():
+                    embed.add_field(name="No changes made", value="No configuration options were changed.")
                     await interaction.response.send_message(embed=embed)
-                else:
-                    await interaction.followup.send(embed=embed)
 
             except Exception as e:
                 await handle_command_exception(interaction, self.client, "An error occurred while setting the configuration.", e)
