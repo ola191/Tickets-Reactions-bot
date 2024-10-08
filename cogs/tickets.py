@@ -157,7 +157,7 @@ class Tickets(commands.GroupCog, name="tickets"):
                 await interaction.response.send_message(embed=embed)
                 return
             
-            query = "SELECT owner, channel_id FROM tickets WHERE server_id = ? AND ticket_id = ?"
+            query = "SELECT owner, channel_id, status FROM tickets WHERE server_id = ? AND ticket_id = ?"
             result = execute_select(query, (server_id, ticket_id))
 
             if not result:
@@ -167,9 +167,15 @@ class Tickets(commands.GroupCog, name="tickets"):
 
             owner_id = result[0][0]
             channel_id = result[0][1]
+            status = result[0][2]
 
             if owner_id != user_id:
                 embed = discord.Embed(title="Failure", description="You are not assigned to this ticket.", color=Color.red())
+                await interaction.response.send_message(embed=embed)
+                return
+
+            if status == "closed":
+                embed = discord.Embed(title="Failure", description="Ticket already closed.", color=Color.red())
                 await interaction.response.send_message(embed=embed)
                 return
 
