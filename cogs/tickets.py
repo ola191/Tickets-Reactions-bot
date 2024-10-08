@@ -89,14 +89,15 @@ class Tickets(commands.GroupCog, name="tickets"):
             ticket_id = generate_ticket_id()
             category_name = discord.utils.get(interaction.guild.categories, id=int(category)).name
             channel_name = f"ticket-{ticket_id}"
+            # channel_id = interaction.channel.id
 
             channel = await self.create_ticket_channel(interaction.guild, int(category), channel_name)
-            
+            channel_id = channel.id
             insert_query = """
-                INSERT INTO tickets (server_id, ticket_id, title, description, category, created_at, owner)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO tickets (server_id, channel_id, ticket_id, title, description, category, created_at, owner)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """
-            execute_query(insert_query, (server_id, ticket_id, title, description, int(category), creation_date, user_id))
+            execute_query(insert_query, (server_id, channel_id, ticket_id, title, description, int(category), creation_date, user_id))
 
             insert_permission_query = """
                 INSERT INTO ticket_permissions (ticket_id, user_id, role)
@@ -156,10 +157,18 @@ class Tickets(commands.GroupCog, name="tickets"):
                 await interaction.response.send_message(embed=embed)
                 return
             
-            query = "SELECT owner FROM tickets WHERE server_id = ? AND ticket_id = ?"
-            owner = execute_select(query, (server_id, ticket_id))
+            query = "SELECT owner, channel_id FROM tickets WHERE server_id = ? AND ticket_id = ?"
+            result = execute_select(query, (server_id, ticket_id))
 
-            if owner[0][0] != user_id:
+            if not result:
+                embed = discord.Embed(title="Failure", description="Ticket not found.", color=Color.red())
+                await interaction.response.send_message(embed=embed)
+                return
+
+            owner_id = result[0][0]
+            channel_id = result[0][1]
+
+            if owner_id != user_id:
                 embed = discord.Embed(title="Failure", description="You are not assigned to this ticket.", color=Color.red())
                 await interaction.response.send_message(embed=embed)
                 return
@@ -168,10 +177,17 @@ class Tickets(commands.GroupCog, name="tickets"):
             rowcount = execute_query(update_query, (server_id, ticket_id, user_id))
 
             if rowcount > 0:
-                embed = discord.Embed(title="Ticket Closed", description=f"Ticket #{ticket_id} has been closed.", color=Color.green())
+                channel = interaction.guild.get_channel(int(channel_id))
+                if channel:
+                    try:
+                        await channel.delete()
+                        embed = discord.Embed(title="Ticket Closed", description=f"Ticket #{ticket_id} has been closed.", color=Color.green())
+                    except Exception as e:
+                        embed = discord.Embed(title="Failure", description="Failed to delete the channel", color=Color.red())
+                else:
+                    embed = discord.Embed(title="Failure", description="No channel was found. " + str(channel_id), color=Color.red())
             else:
                 embed = discord.Embed(title="Failure", description="This ticket does not exist or cannot be closed.", color=Color.red())
-
             await interaction.response.send_message(embed=embed)
         except Exception as e:
             await handle_command_exception(interaction, self.client, None, "An error occurred while closing the ticket.", e)
