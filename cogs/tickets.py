@@ -69,9 +69,30 @@ class Tickets(commands.GroupCog, name="tickets"):
     @app_commands.autocomplete(category=autocomplete_category)
     async def create(self, interaction: discord.Interaction, title: str, description: str, category: str):
         try:
+
+
+
             server_id = interaction.guild.id
             user_id = interaction.user.id
             creation_date = datetime.datetime.utcnow().isoformat()
+
+            query = "SELECT tickets_categories FROM config WHERE server_id = ?"
+            data = execute_select(query, (server_id,))
+
+            exist = False
+            if data and data[0]:
+                tickets_cateegories = json.loads(data[0][0])
+                for category_in_db in tickets_cateegories:
+                    clean_category = str(category_in_db)
+                    print(clean_category)
+                    if clean_category == category:
+                        exist = True
+                        break
+
+            if not exist:
+                embed = create_error_embed(f"choose correct category from server config")
+                await interaction.response.send_message(embed=embed)
+                return
 
             data = fetch_config(server_id)
             if not data:
