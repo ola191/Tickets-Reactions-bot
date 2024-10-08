@@ -119,7 +119,7 @@ def insert_config(server_id: int, admin_role_ids: list, log_channel_id: Optional
     except Exception as e:
         print(f"Error inserting config: {e}")
         
-def update_config(server_id: int, admin_role_ids: List[int], log_channel_id: Optional[int], ticket_categories: Optional[List[str]]):
+def update_config(server_id: int, admin_role_ids: List[int] = None, log_channel_id: Optional[int] = None, ticket_categories: Optional[List[str]] = None):
     try:
         connection = get_db_connection()
         cursor = connection.cursor()

@@ -236,7 +236,7 @@ class Config(commands.GroupCog, name="config"):
             await handle_command_exception(interaction, self.client, "An error occurred while adding the admin user or category.", e)
         
     @app_commands.command(name="remove", description="Remove an admin role")
-    async def remove_admin_role(self, interaction: Interaction, admin_user: discord.Member, ticket_category: Optional[str]):
+    async def remove_admin_role(self, interaction: Interaction, admin_user: discord.Member, ticket_category: Optional[str] = None):
         try:
             if not await self._check_permissions(interaction):
                 await interaction.response.send_message(embed=create_error_embed("You don't have permissions to remove admin roles."))
