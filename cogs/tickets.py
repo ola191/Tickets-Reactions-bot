@@ -79,8 +79,24 @@ class Tickets(commands.GroupCog, name="tickets"):
             user_id = interaction.user.id
             creation_date = datetime.datetime.utcnow().isoformat()
 
-            query = "SELECT tickets_categories FROM config WHERE server_id = ?"
+            query = "SELECT max_tickets_per_user"
+
+            query = "SELECT tickets_categories, max_tickets_per_user FROM config WHERE server_id = ?"
             data = execute_select(query, (server_id,))
+
+            max_tickets_per_user = data[0][1]
+            print(max_tickets_per_user)
+
+            countQuery = "SELECT COUNT(*) FROM tickets WHERE owner = ? AND server_id = ? and status != 'closed'"
+            countQueryData = execute_select(countQuery, (user_id, server_id))
+            ticketsPerUser =countQueryData[0][0]
+
+            if max_tickets_per_user > ticketsPerUser:
+                pass
+            else:
+                embed = create_error_embed("Maximum number of tickets open to the user has been reached")
+                await interaction.response.send_message(embed=embed)
+                return
 
             exist = False
             if data and data[0]:
