@@ -156,15 +156,15 @@ class Tickets(commands.GroupCog, name="tickets"):
                 await interaction.response.send_message(embed=embed)
                 return
             
-            query = "SELECT assigned_to FROM tickets WHERE server_id = ? AND ticket_id = ?"
-            assigned_to = execute_select(query, (server_id, ticket_id))
+            query = "SELECT owner FROM tickets WHERE server_id = ? AND ticket_id = ?"
+            owner = execute_select(query, (server_id, ticket_id))
 
-            if assigned_to[0][0] != user_id:
+            if owner[0][0] != user_id:
                 embed = discord.Embed(title="Failure", description="You are not assigned to this ticket.", color=Color.red())
                 await interaction.response.send_message(embed=embed)
                 return
 
-            update_query = "UPDATE tickets SET status = 'closed' WHERE server_id = ? AND ticket_id = ? and assigned_to = ?"
+            update_query = "UPDATE tickets SET status = 'closed' WHERE server_id = ? AND ticket_id = ? and owner = ?"
             rowcount = execute_query(update_query, (server_id, ticket_id, user_id))
 
             if rowcount > 0:
