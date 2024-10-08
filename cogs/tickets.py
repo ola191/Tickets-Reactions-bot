@@ -91,7 +91,7 @@ class Tickets(commands.GroupCog, name="tickets"):
             channel_name = f"ticket-{ticket_id}"
 
             channel = await self.create_ticket_channel(interaction.guild, int(category), channel_name)
-
+            
             insert_query = """
                 INSERT INTO tickets (server_id, ticket_id, title, description, category, created_at, owner)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -123,7 +123,7 @@ class Tickets(commands.GroupCog, name="tickets"):
             server_id = interaction.guild.id
             user_id = interaction.user.id
 
-            query = "SELECT ticket_id, title, description, created_at, status FROM tickets WHERE server_id = ? and assigned_to = ?"
+            query = "SELECT ticket_id, title, description, created_at, status FROM tickets WHERE server_id = ? and owner = ?"
             tickets = execute_select(query, (server_id, user_id))
 
             if tickets:

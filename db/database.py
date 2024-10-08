@@ -19,7 +19,6 @@ def get_log_channel_id(server_id):
     
     # -> Optional[Tuple[List[int], Optional[int], List[str]]]
 def fetch_config(server_id: int):
-    print("fetch coonfig")
     try:
         connection = get_db_connection()
         cursor = connection.cursor()
@@ -27,7 +26,7 @@ def fetch_config(server_id: int):
         result = cursor.fetchone()
         connection.close()
         
-        print(f"Fetched result: {result}") 
+        # print(f"Fetched result: {result}") 
 
         if result:
             admin_role_ids = json.loads(result[0]) if result[0] else []
@@ -231,8 +230,7 @@ def create_tables(cursor):
             ticket_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             role TEXT CHECK(role IN ('admin', 'user')) DEFAULT 'user',
-            FOREIGN KEY (ticket_id) REFERENCES tickets(id),
-            UNIQUE(ticket_id, user_id)
+            FOREIGN KEY (ticket_id) REFERENCES tickets(id)
         );
     ''')
 
