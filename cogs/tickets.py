@@ -138,18 +138,20 @@ class Tickets(commands.GroupCog, name="tickets"):
 
         except Exception as e:
             await handle_command_exception(interaction, self.client, None, "An error occurred while creating the ticket.", e)
-
     @app_commands.command(name="view", description="View your tickets")
-    async def view(self, interaction: discord.Interaction):
+    async def view(self, interaction: discord.Interaction, page: int = 1):
         try:
             server_id = interaction.guild.id
             user_id = interaction.user.id
 
-            query = "SELECT ticket_id, title, description, created_at, status FROM tickets WHERE server_id = ? and owner = ?"
-            tickets = execute_select(query, (server_id, user_id))
+            tickets_per_page = 5
+            offset = (page -1) * tickets_per_page
+
+            query = "SELECT ticket_id, title, description, created_at, status FROM tickets WHERE server_id = ? and owner = ? LIMIT ? OFFSET ?"
+            tickets = execute_select(query, (server_id, user_id, tickets_per_page, offset))
 
             if tickets:
-                embed = discord.Embed(title="Tickets", color=Color.teal())
+                embed = discord.Embed(title=f"Tickets - Page {page}", color=Color.teal())
                 for ticket in tickets:
                     ticket_id, title, description, created_at, status = ticket
                     embed.add_field(
@@ -157,6 +159,12 @@ class Tickets(commands.GroupCog, name="tickets"):
                         value=f"Title: {title}\nDescription: {description}\nCreated on: {created_at}\nStatus: {status}",
                         inline=False
                     )
+                next_query = "SELECT COUNT(*) FROM tickets WHERE server_id = ? and owner = ?"
+                total_tickets = execute_select(next_query, (server_id, user_id))[0][0]
+                total_pages = (total_tickets + tickets_per_page - 1) // tickets_per_page
+
+                embed.set_footer(text=f"Page {page} of {total_pages}")
+
             else:
                 embed = discord.Embed(title="No Tickets Found", description="There are no tickets for this server.", color=Color.red())
 
