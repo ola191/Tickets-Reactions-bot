@@ -103,7 +103,7 @@ class Tickets(commands.GroupCog, name="tickets"):
                 await interaction.response.send_message(embed=embed)
                 return
 
-            admin_role_ids, log_channel_id, tickets_categories = data
+            admin_role_ids, log_channel_id, tickets_categories, max_tickets_per_user = data
 
             if int(category) not in tickets_categories:
                 embed = create_error_embed(f"The category '{category}' does not exist. Please select a valid category.")

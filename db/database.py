@@ -22,7 +22,7 @@ def fetch_config(server_id: int):
     try:
         connection = get_db_connection()
         cursor = connection.cursor()
-        cursor.execute('''SELECT admin_role_ids, log_channel_id, COALESCE(tickets_categories, '[]') FROM config WHERE server_id = ?''', (server_id,))
+        cursor.execute('''SELECT admin_role_ids, log_channel_id, COALESCE(tickets_categories, '[]'), max_tickets_per_user FROM config WHERE server_id = ?''', (server_id,))
         result = cursor.fetchone()
         connection.close()
         
@@ -32,7 +32,8 @@ def fetch_config(server_id: int):
             admin_role_ids = json.loads(result[0]) if result[0] else []
             log_channel_id = result[1]
             categories_names = json.loads(result[2]) if result[2] else []
-            return (admin_role_ids, log_channel_id, categories_names)
+            max_tickets_per_user = result[3]
+            return (admin_role_ids, log_channel_id, categories_names, max_tickets_per_user)
         return None
     except Exception as e:
         print(f"Error fetching config: {e}")

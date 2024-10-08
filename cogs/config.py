@@ -44,7 +44,7 @@ class Config(commands.GroupCog, name="config"):
                     await interaction.response.send_message(embed=embed)
                     return
 
-                admin_roles, current_log_channel_id, ticket_categories = config_data
+                admin_roles, current_log_channel_id, ticket_categories, max_tickets_per_user = config_data
 
                 if admin_user:
                     embed.add_field(
@@ -161,11 +161,13 @@ class Config(commands.GroupCog, name="config"):
                 await interaction.response.send_message(embed=embed)
                 return
 
-            admin_users_ids, log_channel_id, ticket_categories = config_data
+            admin_users_ids, log_channel_id, ticket_categories, max_tickets_per_user = config_data
             admin_users_str = ", ".join([f"<@{user_id}>" for user_id in admin_users_ids]) if admin_users_ids else "None"
             
             tickets_categories_str = ", ".join([f"{category}" for category in ticket_categories]) if ticket_categories else "None"
-            
+
+            max_tickets_per_user_str = str(max_tickets_per_user)
+
             embed = discord.Embed(
                 title="Server Configuration",
                 color=discord.Color.from_rgb(100, 150, 255)
@@ -173,6 +175,7 @@ class Config(commands.GroupCog, name="config"):
             embed.add_field(name="Log Channel", value=f"<#{log_channel_id}>" if log_channel_id else "Not set", inline=False)
             embed.add_field(name="Admin Users", value=admin_users_str, inline=False)
             embed.add_field(name="Tickets Categories", value=tickets_categories_str, inline=False)
+            embed.add_field(name="Max tickets per user", value=max_tickets_per_user_str, inline=False)
 
             await interaction.response.send_message(embed=embed)
 
